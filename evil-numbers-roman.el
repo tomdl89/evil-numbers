@@ -72,55 +72,51 @@
         tokens)
     (save-match-data
       (while (string-match rx s index)
-        (push
-         (cond ((match-string 1 s) ; Subtractive tokens like IV and CM
-                (setq index (match-end 1))
-                (cadr (assoc (match-string 1 s) evil-numbers/roman-subtractives)))
-
-               ((match-string 2 s) ; Simple additive tokens like I and M
-                (setq index (match-end 2))
-                (cadr (assoc (match-string 2 s) evil-numbers/roman-additives)))
-
-               ((match-string 3 s) ; Not a valid token - return it as a string
-                (setq index (match-end 3))
-                (match-string 3 s)))
-         tokens)))
+        (cond ((match-string 1 s) ; Subtractive tokens like IV and CM
+               (setq index (match-end 1))
+               (push (cadr (assoc (match-string 1 s) evil-numbers/roman-subtractives))
+                     tokens))
+              ((match-string 2 s) ; Simple additive tokens like I and M
+               (setq index (match-end 2))
+               (push (cadr (assoc (match-string 2 s) evil-numbers/roman-additives))
+                     tokens))
+              ((match-string 3 s) ; Not a valid token
+               (throw 'bad-digit (list :digit (match-string 3 s)))))))
     tokens))
 
 (defun evil-numbers/roman->int (s)
-  (let ((tokens (evil-numbers/tokenize-roman s))
-        (sum 0)
-        prev-token)
-    (while tokens
-      (cond ((stringp (car tokens))
-             (setq sum (format "Invalid token: %s" (car tokens))
-                   tokens nil))
-            ((or (member (list (car tokens) prev-token) evil-numbers/bad-pairs)
-                 (and prev-token (> prev-token (car tokens))))
-             (setq sum (format "Invalid token pair: %s %s" (car tokens) prev-token)
-                   tokens nil))
-            (t (setq sum (+ (car tokens) sum))))
-      (setq prev-token (car tokens)
-            tokens (cdr tokens)))
-    sum))
+  (catch 'bad-digit
+    (let ((tokens (evil-numbers/tokenize-roman s))
+          (sum 0)
+          prev-token)
+      (while tokens
+        (if (or (member (list (car tokens) prev-token) evil-numbers/bad-pairs)
+                (and prev-token (> prev-token (car tokens))))
+            (throw 'bad-digit (list :pair (car tokens) prev-token))
+          (setq sum (+ (car tokens) sum)))
+        (setq prev-token (car tokens)
+              tokens (cdr tokens)))
+      sum)))
 
 (defun evil-numbers/digit->roman (digit place)
-  (if digit
+  (if-let (arabic (and (string-match-p "[0-9]" digit) (string-to-number digit)))
       (pcase place
-        (1 (nth digit '("" "I" "II" "III" "IV" "V" "VI" "VII" "VIII" "IX")))
-        (2 (nth digit '("" "X" "XX" "XXX" "XL" "L" "LX" "LXX" "LXXX" "XC")))
-        (3 (nth digit '("" "C" "CC" "CCC" "CD" "D" "DC" "DCC" "DCCC" "CM")))
-        (4 (make-string digit ?M))
-        (_ (format "%s digit numbers are out of range" place)))
-    "Non digit token"))
+        (1 (nth arabic '("" "I" "II" "III" "IV" "V" "VI" "VII" "VIII" "IX")))
+        (2 (nth arabic '("" "X" "XX" "XXX" "XL" "L" "LX" "LXX" "LXXX" "XC")))
+        (3 (nth arabic '("" "C" "CC" "CCC" "CD" "D" "DC" "DCC" "DCCC" "CM")))
+        (4 (make-string arabic ?M))
+        (_ (throw 'bad-digit (list :place place))))
+    (throw 'bad-digit (list :digit digit))))
 
 (defun evil-numbers/int->roman (n)
   (let* ((s-num (mapcar #'string (number-to-string n)))
          (s-len (length s-num))
          (roman-form ""))
-    (while (< 0 s-len)
-      (let ((roman-digit (evil-numbers/digit->roman (string-to-number (car s-num)) s-len)))
-        (setq roman-form (concat roman-form roman-digit)))
-      (setq s-num (cdr s-num)
-            s-len (1- s-len)))
-    roman-form))
+    ;; TODO positive?
+    (catch 'bad-digit
+      (while (< 0 s-len)
+        (let ((roman-digit (evil-numbers/digit->roman (car s-num) s-len)))
+          (setq roman-form (concat roman-form roman-digit)))
+        (setq s-num (cdr s-num)
+              s-len (1- s-len)))
+      roman-form)))
