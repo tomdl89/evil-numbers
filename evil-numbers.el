@@ -54,6 +54,7 @@
 ;;; Code:
 
 (require 'evil)
+(require 'evil-numbers-roman)
 
 (eval-when-compile
   ;; For `pcase-dolist'.
@@ -422,77 +423,79 @@ A non nil result causes this function to return nil.
 When all characters are found in sequence, evaluate the number in BASE,
 replacing it by the result of NUMBER-XFORM-FN and return non-nil."
   (save-match-data
-    (when (and (save-excursion
-                 ;; Skip backwards (as needed), there may be no
-                 ;; characters to skip back, so don't check the result.
-                 (evil-numbers--match-from-skip-chars
-                  match-chars -1 beg nil nil)
-                 ;; Skip forwards from the beginning, setting match data.
-                 (evil-numbers--match-from-skip-chars match-chars 1 end t t))
+    (catch 'evil-numbers--inc-at-pt-error
+      (when (and (save-excursion
+                   ;; Skip backwards (as needed), there may be no
+                   ;; characters to skip back, so don't check the result.
+                   (evil-numbers--match-from-skip-chars
+                    match-chars -1 beg nil nil)
+                   ;; Skip forwards from the beginning, setting match data.
+                   (evil-numbers--match-from-skip-chars match-chars 1 end t t))
 
-               ;; Either there is no range checking or the range must
-               ;; be accepted by the caller.
-               (or (null range-check-fn)
-                   (funcall range-check-fn (match-beginning 0) (match-end 0))))
+                 ;; Either there is no range checking or the range must
+                 ;; be accepted by the caller.
+                 (or (null range-check-fn)
+                     (funcall range-check-fn (match-beginning 0) (match-end 0))))
 
-      (goto-char (match-end num-group))
-      (let* ((sep-char (nth 2 (nth (1- num-group) match-chars)))
-             (str-prev
-              (funcall decode-fn
-                       (concat
-                        (match-string sign-group) (match-string num-group))))
+        (goto-char (match-end num-group))
+        (let* ((sep-char (nth 2 (nth (1- num-group) match-chars)))
+               (str-prev
+                (funcall decode-fn
+                         (concat (and sign-group (match-string sign-group))
+                                 (match-string num-group))))
 
-             (str-prev-strip
-              (cond
-               (sep-char
-                (evil-numbers--strip-chars str-prev sep-char))
-               (t
-                str-prev)))
+               (str-prev-strip
+                (cond
+                 (sep-char
+                  (evil-numbers--strip-chars str-prev sep-char))
+                 (t
+                  str-prev)))
 
-             (num-prev (string-to-number str-prev-strip base))
-             (num-next (funcall number-xform-fn num-prev))
-             (str-next
-              (evil-numbers--format
-               (abs num-next)
-               (cond
-                (padded
-                 (- (match-end num-group) (match-beginning num-group)))
-                (t
-                 1))
-               base)))
+               (num-prev (string-to-number str-prev-strip base))
+               (num-next (funcall number-xform-fn num-prev))
+               (str-next
+                (evil-numbers--format
+                 (abs num-next)
+                 (cond
+                  (padded
+                   (- (match-end num-group) (match-beginning num-group)))
+                  (t
+                   1))
+                 base)))
 
-        ;; Maintain case.
-        (when do-case
-          ;; Upper case (already set), no need to handle here.
-          (cond
-           ;; Keep current case.
-           ((null evil-numbers-case)
-            (when (eq -1 (or (evil-numbers--case-category str-prev -1) -1))
-              (setq str-next (downcase str-next))))
-           ((eq evil-numbers-case 'downcase)
-            (setq str-next (downcase str-next)))))
+          ;; Maintain case.
+          (when do-case
+            ;; Upper case (already set), no need to handle here.
+            (cond
+             ;; Keep current case.
+             ((null evil-numbers-case)
+              (when (eq -1 (or (evil-numbers--case-category str-prev -1) -1))
+                (setq str-next (downcase str-next))))
+             ((eq evil-numbers-case 'downcase)
+              (setq str-next (downcase str-next)))))
 
-        (when sep-char
-          ;; This is a relatively expensive operation,
-          ;; only apply separators back if any were found to begin with.
-          (unless (string-equal str-prev str-prev-strip)
-            (setq str-next
-                  (evil-numbers--strip-chars-apply
-                   str-prev str-next sep-char))))
+          (when sep-char
+            ;; This is a relatively expensive operation,
+            ;; only apply separators back if any were found to begin with.
+            (unless (string-equal str-prev str-prev-strip)
+              (setq str-next
+                    (evil-numbers--strip-chars-apply
+                     str-prev str-next sep-char))))
 
-        ;; Replace the sign (as needed).
-        (cond
-         ;; From negative to positive.
-         ((and (< num-prev 0) (not (< num-next 0)))
-          (replace-match "" t t nil sign-group))
-         ;; From positive to negative.
-         ((and (not (< num-prev 0)) (< num-next 0))
-          (replace-match (funcall encode-fn "-") t t nil sign-group)))
+          ;; Replace the sign (as needed).
+          (when sign-group
+            (cond
+             ;; From negative to positive.
+             ((and (< num-prev 0) (not (< num-next 0)))
+              (replace-match "" t t nil sign-group))
+             ;; From positive to negative.
+             ((and (not (< num-prev 0)) (< num-next 0))
+              (replace-match (funcall encode-fn "-") t t nil sign-group))))
 
-        ;; Replace the number.
-        (replace-match (funcall encode-fn str-next) t t nil num-group))
+          ;; Replace the number.
+          (replace-match (funcall encode-fn str-next) t t nil num-group))
 
-      t)))
+        t))))
 
 (defun evil-numbers--inc-at-pt-impl
     (beg end padded range-check-fn number-xform-fn)
@@ -568,7 +571,17 @@ Return non-nil on success, leaving the point at the end of the number."
     ;; Other arguments.
     beg end padded nil range-check-fn number-xform-fn
     ;; Decode & encode callbacks.
-    #'evil-numbers--decode-sub #'evil-numbers--encode-sub)))
+    #'evil-numbers--decode-sub #'evil-numbers--encode-sub)
+
+   ;; Find roman numerals written with latin alphabet.
+   (evil-numbers--inc-at-pt-impl-with-match-chars
+    `(("IVXLCDM" +))
+    ;; Sign, number groups & base.
+    nil 1 10
+    ;; Other arguments.
+    beg end padded nil range-check-fn number-xform-fn
+    ;; Decode & encode callbacks.
+    #'evil-numbers--decode-roman #'evil-numbers--encode-roman)))
 
 (defun evil-numbers--inc-at-pt-impl-with-search
     (amount beg end padded range-check-fn)
@@ -609,6 +622,7 @@ Return non-nil on success, leaving the point at the end of the number."
                                   "[:xdigit:]"
                                   evil-numbers--chars-superscript
                                   evil-numbers--chars-subscript
+                                  ;; TODO - add romans here (optionally) for forward search
                                   "]")
                                  end t))))
     found))
@@ -639,8 +653,7 @@ PADDED is whether numbers should be padded (e.g. 10 -> 09).
 Numbers with a leading zero are always padded.
 Signs are preserved when padding is enabled, for example: increasing a
 negative number to a positive will result in a number with a + sign."
-  :motion
-  nil
+  :motion nil
   (interactive "*<c><R>")
 
   (setq amount (or amount 1))

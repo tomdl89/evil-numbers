@@ -81,22 +81,21 @@
                (push (cadr (assoc (match-string 2 s) evil-numbers/roman-additives))
                      tokens))
               ((match-string 3 s) ; Not a valid token
-               (throw 'bad-digit (list :digit (match-string 3 s)))))))
+               (throw 'bad-digit :invalid)))))
     tokens))
 
 (defun evil-numbers/roman->int (s)
-  (catch 'bad-digit
-    (let ((tokens (evil-numbers/tokenize-roman s))
-          (sum 0)
-          prev-token)
-      (while tokens
-        (if (or (member (list (car tokens) prev-token) evil-numbers/bad-pairs)
-                (and prev-token (> prev-token (car tokens))))
-            (throw 'bad-digit (list :pair (car tokens) prev-token))
-          (setq sum (+ (car tokens) sum)))
-        (setq prev-token (car tokens)
-              tokens (cdr tokens)))
-      sum)))
+  (let ((tokens (evil-numbers/tokenize-roman s))
+        (sum 0)
+        prev-token)
+    (while tokens
+      (if (or (member (list (car tokens) prev-token) evil-numbers/bad-pairs)
+              (and prev-token (> prev-token (car tokens))))
+          (throw 'bad-digit :invalid)
+        (setq sum (+ (car tokens) sum)))
+      (setq prev-token (car tokens)
+            tokens (cdr tokens)))
+    sum))
 
 (defun evil-numbers/digit->roman (digit place)
   (if-let (arabic (and (string-match-p "[0-9]" digit) (string-to-number digit)))
@@ -105,18 +104,47 @@
         (2 (nth arabic '("" "X" "XX" "XXX" "XL" "L" "LX" "LXX" "LXXX" "XC")))
         (3 (nth arabic '("" "C" "CC" "CCC" "CD" "D" "DC" "DCC" "DCCC" "CM")))
         (4 (make-string arabic ?M))
-        (_ (throw 'bad-digit (list :place place))))
-    (throw 'bad-digit (list :digit digit))))
+        (_ (throw 'bad-digit :max)))
+    (throw 'bad-digit :invalid)))
 
 (defun evil-numbers/int->roman (n)
   (let* ((s-num (mapcar #'string (number-to-string n)))
          (s-len (length s-num))
          (roman-form ""))
-    ;; TODO positive?
-    (catch 'bad-digit
+    (if (> 1 n)
+        (throw 'bad-digit :zero)
       (while (< 0 s-len)
         (let ((roman-digit (evil-numbers/digit->roman (car s-num) s-len)))
           (setq roman-form (concat roman-form roman-digit)))
         (setq s-num (cdr s-num)
               s-len (1- s-len)))
       roman-form)))
+
+(defun evil-numbers--encode-roman (x)
+  (let ((result (catch 'bad-digit
+                  (evil-numbers/int->roman (string-to-number x)))))
+    (pcase result
+      (:zero (throw 'evil-numbers--inc-at-pt-error
+                    (message "No zero in roman numerals")))
+      (:max (throw 'evil-numbers--inc-at-pt-error
+                   (message "Out of range for roman numerals")))
+      (:invalid (throw 'evil-numbers--inc-at-pt-error
+                       (message "Invalid roman numeral")))
+      (_ result))))
+
+(defun evil-numbers--decode-roman (x)
+  (let ((result (catch 'bad-digit
+                  (evil-numbers/roman->int x))))
+    (pcase result
+      (:invalid (throw 'evil-numbers--inc-at-pt-error
+                       (message "Invalid roman numeral")))
+      (_ (number-to-string result)))))
+
+(provide 'evil-numbers-roman)
+
+;; Local Variables:
+;; fill-column: 80
+;; elisp-autofmt-load-packages-local: ("evil-macros")
+;; End:
+
+;;; evil-numbers-roman.el ends here
