@@ -110,6 +110,10 @@ Otherwise nil will disable this functionality."
 This doesn't match VIM's behavior."
   :type 'boolean)
 
+(defcustom evil-numbers-ascii-roman-numerals t
+  "When non-nil, recognize roman numerals using ascii (IVXLCDM) chars."
+  :type 'boolean)
+
 ;; ---------------------------------------------------------------------------
 ;; Internal Variables
 
@@ -573,15 +577,22 @@ Return non-nil on success, leaving the point at the end of the number."
     ;; Decode & encode callbacks.
     #'evil-numbers--decode-sub #'evil-numbers--encode-sub)
 
-   ;; Find roman numerals written with latin alphabet.
-   (evil-numbers--inc-at-pt-impl-with-match-chars
-    `(("IVXLCDM" +))
-    ;; Sign, number groups & base.
-    nil 1 10
-    ;; Other arguments.
-    beg end padded nil range-check-fn number-xform-fn
-    ;; Decode & encode callbacks.
-    #'evil-numbers--decode-roman #'evil-numbers--encode-roman)))
+   (when evil-numbers-ascii-roman-numerals
+     (evil-numbers--inc-at-pt-impl-with-match-chars
+      `(("IVXLCDM" +))
+      ;; Sign, number groups & base.
+      nil 1 10
+      ;; Other arguments.
+      beg end padded nil
+      ;; Use range-check-fn to make sure we're not in a word
+      (lambda (beg end)
+        (and (not (string-match-p "\\w" (string (char-before beg))))
+             (not (string-match-p "\\w" (string (char-after end))))
+             (or (not range-check-fn)
+                 (funcall range-check-fn beg end))))
+      number-xform-fn
+      ;; Decode & encode callbacks.
+      #'evil-numbers--decode-roman #'evil-numbers--encode-roman))))
 
 (defun evil-numbers--inc-at-pt-impl-with-search
     (amount beg end padded range-check-fn)
@@ -618,11 +629,12 @@ Return non-nil on success, leaving the point at the end of the number."
 
               ;; Search failed, exit the loop.
               (re-search-forward (concat
+                                  (when evil-numbers-ascii-roman-numerals
+                                    "\\b[IVXLCDM]\\|")
                                   "["
                                   "[:xdigit:]"
                                   evil-numbers--chars-superscript
                                   evil-numbers--chars-subscript
-                                  ;; TODO - add romans here (optionally) for forward search
                                   "]")
                                  end t))))
     found))

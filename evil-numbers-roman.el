@@ -39,7 +39,7 @@
 
 (require 'evil)
 
-(defvar evil-numbers/roman-subtractives
+(defvar evil-numbers--roman-subtractives
   '(("IV" 4)
     ("IX" 9)
     ("XL" 40)
@@ -47,7 +47,7 @@
     ("CD" 400)
     ("CM" 900)))
 
-(defvar evil-numbers/roman-additives
+(defvar evil-numbers--roman-additives
   '(("I" 1)
     ("V" 5)
     ("X" 10)
@@ -56,7 +56,7 @@
     ("D" 500)
     ("M" 1000)))
 
-(defvar evil-numbers/bad-pairs
+(defvar evil-numbers--bad-pairs
   '((900 500) (900 400) (900 100)
     (90 50) (90 40) (90 10)
     (9 5) (9 4) (9 1)
@@ -65,7 +65,7 @@
     (5 5) (5 4) (4 1)
     (400 400) (40 40) (4 4)))
 
-(defun evil-numbers/tokenize-roman (s)
+(defun evil-numbers--tokenize-roman (s)
   (let ((rx "\\(?1:IV\\|IX\\|XL\\|XC\\|CD\\|CM\\)\\|\\(?2:[IVXLCDM]\\)\\|\\(?3:.\\)")
         (index 0)
         case-fold-search
@@ -74,30 +74,30 @@
       (while (string-match rx s index)
         (cond ((match-string 1 s) ; Subtractive tokens like IV and CM
                (setq index (match-end 1))
-               (push (cadr (assoc (match-string 1 s) evil-numbers/roman-subtractives))
+               (push (cadr (assoc (match-string 1 s) evil-numbers--roman-subtractives))
                      tokens))
               ((match-string 2 s) ; Simple additive tokens like I and M
                (setq index (match-end 2))
-               (push (cadr (assoc (match-string 2 s) evil-numbers/roman-additives))
+               (push (cadr (assoc (match-string 2 s) evil-numbers--roman-additives))
                      tokens))
               ((match-string 3 s) ; Not a valid token
                (throw 'bad-digit :invalid)))))
     tokens))
 
-(defun evil-numbers/roman->int (s)
-  (let ((tokens (evil-numbers/tokenize-roman s))
+(defun evil-numbers--roman->int (s)
+  (let ((tokens (evil-numbers--tokenize-roman s))
         (sum 0)
         prev-token)
     (while tokens
-      (if (or (member (list (car tokens) prev-token) evil-numbers/bad-pairs)
+      (if (or (member (list (car tokens) prev-token) evil-numbers--bad-pairs)
               (and prev-token (> prev-token (car tokens))))
           (throw 'bad-digit :invalid)
         (setq sum (+ (car tokens) sum)))
       (setq prev-token (car tokens)
             tokens (cdr tokens)))
-    sum))
+    (number-to-string sum)))
 
-(defun evil-numbers/digit->roman (digit place)
+(defun evil-numbers--digit->roman (digit place)
   (if-let (arabic (and (string-match-p "[0-9]" digit) (string-to-number digit)))
       (pcase place
         (1 (nth arabic '("" "I" "II" "III" "IV" "V" "VI" "VII" "VIII" "IX")))
@@ -107,14 +107,14 @@
         (_ (throw 'bad-digit :max)))
     (throw 'bad-digit :invalid)))
 
-(defun evil-numbers/int->roman (n)
-  (let* ((s-num (mapcar #'string (number-to-string n)))
+(defun evil-numbers--int->roman (s)
+  (let* ((s-num (mapcar #'string s))
          (s-len (length s-num))
          (roman-form ""))
-    (if (> 1 n)
+    (if (string= "0" s)
         (throw 'bad-digit :zero)
       (while (< 0 s-len)
-        (let ((roman-digit (evil-numbers/digit->roman (car s-num) s-len)))
+        (let ((roman-digit (evil-numbers--digit->roman (car s-num) s-len)))
           (setq roman-form (concat roman-form roman-digit)))
         (setq s-num (cdr s-num)
               s-len (1- s-len)))
@@ -122,7 +122,7 @@
 
 (defun evil-numbers--encode-roman (x)
   (let ((result (catch 'bad-digit
-                  (evil-numbers/int->roman (string-to-number x)))))
+                  (evil-numbers--int->roman x))))
     (pcase result
       (:zero (throw 'evil-numbers--inc-at-pt-error
                     (message "No zero in roman numerals")))
@@ -134,11 +134,11 @@
 
 (defun evil-numbers--decode-roman (x)
   (let ((result (catch 'bad-digit
-                  (evil-numbers/roman->int x))))
+                  (evil-numbers--roman->int x))))
     (pcase result
       (:invalid (throw 'evil-numbers--inc-at-pt-error
                        (message "Invalid roman numeral")))
-      (_ (number-to-string result)))))
+      (_ result))))
 
 (provide 'evil-numbers-roman)
 
