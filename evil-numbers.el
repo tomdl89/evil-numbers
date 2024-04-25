@@ -586,8 +586,8 @@ Return non-nil on success, leaving the point at the end of the number."
       beg end padded nil
       ;; Use range-check-fn to make sure we're not in a word
       (lambda (beg end)
-        (and (not (string-match-p "\\w" (string (char-before beg))))
-             (not (string-match-p "\\w" (string (char-after end))))
+        (and (not (string-match-p "\\w" (string (or (char-before beg) 0))))
+             (not (string-match-p "\\w" (string (or (char-after end) 0))))
              (or (not range-check-fn)
                  (funcall range-check-fn beg end))))
       number-xform-fn
