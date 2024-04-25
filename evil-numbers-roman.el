@@ -39,6 +39,8 @@
 
 (require 'evil)
 
+;; ASCII
+
 (defvar evil-numbers--roman-subtractives
   '(("IV" 4)
     ("IX" 9)
@@ -139,6 +141,71 @@
       (:invalid (throw 'evil-numbers--inc-at-pt-error
                        (message "Invalid roman numeral")))
       (_ result))))
+
+;; Unicode
+
+(defvar evil-numbers--roman-unicode-subtractives
+  '(("ⅩⅬ" 40)
+    ("XⅭ" 90)
+    ("ⅭⅮ" 400)
+    ("ⅭⅯ" 900)))
+
+(defvar evil-numbers--roman-unicode-additives
+  '(("Ⅰ" 1)
+    ("Ⅱ" 2)
+    ("Ⅲ" 3)
+    ("Ⅳ" 4)
+    ("Ⅴ" 5)
+    ("Ⅵ" 6)
+    ("Ⅶ" 7)
+    ("Ⅷ" 8)
+    ("Ⅸ" 9)
+    ("Ⅹ" 10)
+    ("Ⅺ" 11)
+    ("Ⅻ" 12)
+    ("Ⅼ" 50)
+    ("Ⅽ" 100)
+    ("Ⅾ" 500)
+    ("Ⅿ" 1000)))
+
+(defvar evil-numbers--unicode-bad-pairs
+  (append evil-numbers--bad-pairs
+          '((10 1) (10 2))))
+
+;; TODO? ⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹⅺⅻⅼⅽⅾⅿↀↁↂↃ
+
+(defun evil-numbers--tokenize-unicode-roman (s)
+  (let ((rx "\\(?1:ⅩⅬ\\|XⅭ\\|ⅭⅮ\\|ⅭⅯ\\)\\|\\(?2:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫⅬⅭⅮⅯ]\\)\\|\\(?3:.\\)")
+        (index 0)
+        case-fold-search
+        tokens)
+    (save-match-data
+      (while (string-match rx s index)
+        (cond ((match-string 1 s) ; Subtractive tokens like ⅩⅬ and ⅭⅯ
+               (setq index (match-end 1))
+               (push (cadr (assoc (match-string 1 s) evil-numbers--roman-unicode-subtractives))
+                     tokens))
+              ((match-string 2 s) ; Simple additive tokens like Ⅷ and Ⅾ
+               (setq index (match-end 2))
+               (push (cadr (assoc (match-string 2 s) evil-numbers--roman-unicode-additives))
+                     tokens))
+              ((match-string 3 s) ; Not a valid token
+               (throw 'bad-digit :invalid)))))
+    tokens))
+
+(defun evil-numbers--unicode-roman->int (s)
+  (let ((tokens (evil-numbers--tokenize-unicode-roman s))
+        (sum 0)
+        prev-token)
+    (while tokens
+      (if (or (member (list (car tokens) prev-token) evil-numbers--unicode-bad-pairs)
+              (and prev-token (member (car tokens) '(1 2 3 4 5 6 7 8 9 11 12)))
+              (and prev-token (> prev-token (car tokens))))
+          (throw 'bad-digit :invalid)
+        (setq sum (+ (car tokens) sum)))
+      (setq prev-token (car tokens)
+            tokens (cdr tokens)))
+    (number-to-string sum)))
 
 (provide 'evil-numbers-roman)
 
