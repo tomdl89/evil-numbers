@@ -110,7 +110,7 @@ Otherwise nil will disable this functionality."
 This doesn't match VIM's behavior."
   :type 'boolean)
 
-(defcustom evil-numbers-ascii-roman-numerals t
+(defcustom evil-numbers-ascii-roman-numerals nil
   "When non-nil, recognize roman numerals using ascii (IVXLCDM) chars."
   :type 'boolean)
 
@@ -491,14 +491,13 @@ replacing it by the result of NUMBER-XFORM-FN and return non-nil."
                      str-prev str-next sep-char))))
 
           ;; Replace the sign (as needed).
-          (when sign-group
-            (cond
-             ;; From negative to positive.
-             ((and (< num-prev 0) (not (< num-next 0)))
-              (replace-match "" t t nil sign-group))
-             ;; From positive to negative.
-             ((and (not (< num-prev 0)) (< num-next 0))
-              (replace-match (funcall encode-fn "-") t t nil sign-group))))
+          (cond
+           ;; From negative to positive.
+           ((and (< num-prev 0) (not (< num-next 0)))
+            (replace-match "" t t nil sign-group))
+           ;; From positive to negative.
+           ((and (not (< num-prev 0)) (< num-next 0))
+            (replace-match (funcall encode-fn "-") t t nil sign-group)))
 
           ;; Replace the number.
           (replace-match (funcall encode-fn str-next) t t nil num-group))
@@ -645,7 +644,8 @@ Return non-nil on success, leaving the point at the end of the number."
               (re-search-forward (concat
                                   (when evil-numbers-ascii-roman-numerals
                                     "\\b[IVXLCDM]\\|")
-                                  ;; TODO add unicode
+                                  (when evil-numbers-unicode-roman-numerals
+                                    "\\b[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫⅬⅭⅮⅯ]\\|")
                                   "["
                                   "[:xdigit:]"
                                   evil-numbers--chars-superscript
