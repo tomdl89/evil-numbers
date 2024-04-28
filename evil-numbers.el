@@ -114,6 +114,10 @@ This doesn't match VIM's behavior."
   "When non-nil, recognize roman numerals using ascii (IVXLCDM) chars."
   :type 'boolean)
 
+(defcustom evil-numbers-unicode-roman-numerals t
+  "When non-nil, recognize roman numerals using unicode (ⅠⅤⅩⅬⅭⅮⅯ) chars."
+  :type 'boolean)
+
 ;; ---------------------------------------------------------------------------
 ;; Internal Variables
 
@@ -592,7 +596,17 @@ Return non-nil on success, leaving the point at the end of the number."
                  (funcall range-check-fn beg end))))
       number-xform-fn
       ;; Decode & encode callbacks.
-      #'evil-numbers--decode-roman #'evil-numbers--encode-roman))))
+      #'evil-numbers--decode-roman #'evil-numbers--encode-roman))
+
+   (when evil-numbers-unicode-roman-numerals
+     (evil-numbers--inc-at-pt-impl-with-match-chars
+      `(("ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫⅬⅭⅮⅯ" +))
+      ;; Sign, number groups & base.
+      nil 1 10
+      ;; Other arguments.
+      beg end padded nil range-check-fn number-xform-fn
+      ;; Decode & encode callbacks.
+      #'evil-numbers--decode-roman-unicode #'evil-numbers--encode-roman-unicode))))
 
 (defun evil-numbers--inc-at-pt-impl-with-search
     (amount beg end padded range-check-fn)
@@ -631,6 +645,7 @@ Return non-nil on success, leaving the point at the end of the number."
               (re-search-forward (concat
                                   (when evil-numbers-ascii-roman-numerals
                                     "\\b[IVXLCDM]\\|")
+                                  ;; TODO add unicode
                                   "["
                                   "[:xdigit:]"
                                   evil-numbers--chars-superscript

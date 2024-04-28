@@ -114,6 +114,7 @@
          (s-len (length s-num))
          (roman-form ""))
     (if (string= "0" s)
+        ;; TODO handle negatives (i.e when decreasing with count)
         (throw 'bad-digit :zero)
       (while (< 0 s-len)
         (let ((roman-digit (evil-numbers--digit->roman (car s-num) s-len)))
@@ -146,7 +147,7 @@
 
 (defvar evil-numbers--roman-unicode-subtractives
   '(("ⅩⅬ" 40)
-    ("XⅭ" 90)
+    ("ⅩⅭ" 90)
     ("ⅭⅮ" 400)
     ("ⅭⅯ" 900)))
 
@@ -168,14 +169,10 @@
     ("Ⅾ" 500)
     ("Ⅿ" 1000)))
 
-(defvar evil-numbers--unicode-bad-pairs
-  (append evil-numbers--bad-pairs
-          '((10 1) (10 2))))
-
 ;; TODO? ⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹⅺⅻⅼⅽⅾⅿↀↁↂↃ
 
 (defun evil-numbers--tokenize-unicode-roman (s)
-  (let ((rx "\\(?1:ⅩⅬ\\|XⅭ\\|ⅭⅮ\\|ⅭⅯ\\)\\|\\(?2:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫⅬⅭⅮⅯ]\\)\\|\\(?3:.\\)")
+  (let ((rx "\\(?1:ⅩⅬ\\|ⅩⅭ\\|ⅭⅮ\\|ⅭⅯ\\)\\|\\(?2:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫⅬⅭⅮⅯ]\\)\\|\\(?3:.\\)")
         (index 0)
         case-fold-search
         tokens)
@@ -198,7 +195,7 @@
         (sum 0)
         prev-token)
     (while tokens
-      (if (or (member (list (car tokens) prev-token) evil-numbers--unicode-bad-pairs)
+      (if (or (member (list (car tokens) prev-token) evil-numbers--bad-pairs)
               (and prev-token (member (car tokens) '(1 2 3 4 5 6 7 8 9 11 12)))
               (and prev-token (> prev-token (car tokens))))
           (throw 'bad-digit :invalid)
@@ -206,6 +203,63 @@
       (setq prev-token (car tokens)
             tokens (cdr tokens)))
     (number-to-string sum)))
+
+(defun evil-numbers--digit->roman-unicode (digit place)
+  (if-let (arabic (and (string-match-p "^[0-9]$" digit) (string-to-number digit)))
+      (pcase place
+        (1 (nth arabic '("" "Ⅰ" "Ⅱ" "Ⅲ" "Ⅳ" "Ⅴ" "Ⅵ" "Ⅶ" "Ⅷ" "Ⅸ")))
+        (2 (nth arabic '("" "Ⅹ" "ⅩⅩ" "ⅩⅩⅩ" "ⅩⅬ" "Ⅼ" "ⅬⅩ" "ⅬⅩⅩ" "ⅬⅩⅩⅩ" "ⅩⅭ")))
+        (3 (nth arabic '("" "Ⅽ" "ⅭⅭ" "ⅭⅭⅭ" "ⅭⅮ" "Ⅾ" "ⅮⅭ" "ⅮⅭⅭ" "ⅮⅭⅭⅭ" "ⅭⅯ")))
+        (4 (make-string arabic ?Ⅿ))
+        (_ (throw 'bad-digit :max)))
+    (throw 'bad-digit :invalid)))
+
+(defun evil-numbers--decimal-int->roman-unicode (s)
+  (let* ((s-num (mapcar #'string s))
+         (s-len (length s-num))
+         (roman-form ""))
+    (if (string= "0" s)
+        ;; TODO handle negatives (i.e when decreasing with count)
+        (throw 'bad-digit :zero)
+      (while (< 0 s-len)
+        (let ((roman-digit (evil-numbers--digit->roman-unicode (car s-num) s-len)))
+          (setq roman-form (concat roman-form roman-digit)))
+        (setq s-num (cdr s-num)
+              s-len (1- s-len)))
+      roman-form)))
+
+(defun evil-numbers--int->roman-unicode (s)
+  (let* ((last-2-digits (string-limit s 2 t)))
+    (cond ((equal "11" last-2-digits)
+           (concat (evil-numbers--decimal-int->roman-unicode
+                    (replace-regexp-in-string "11$" "00" s))
+                   "Ⅺ"))
+          ((equal "12" last-2-digits)
+           (concat (evil-numbers--decimal-int->roman-unicode
+                    (replace-regexp-in-string "12$" "00" s))
+                   "Ⅻ"))
+          (t (evil-numbers--decimal-int->roman-unicode s)))))
+
+(defun evil-numbers--encode-roman-unicode (x)
+  (let ((result (catch 'bad-digit
+                  (evil-numbers--int->roman-unicode x))))
+    (pcase result
+      (:zero (throw 'evil-numbers--inc-at-pt-error
+                    (message "No zero in roman numerals")))
+      (:max (throw 'evil-numbers--inc-at-pt-error
+                   (message "Out of range for roman numerals")))
+      (:invalid (throw 'evil-numbers--inc-at-pt-error
+                       (message "Invalid roman numeral")))
+      (_ result))))
+
+(defun evil-numbers--decode-roman-unicode (x)
+  (let ((result (catch 'bad-digit
+                  (evil-numbers--unicode-roman->int x))))
+    (pcase result
+      (:invalid (throw 'evil-numbers--inc-at-pt-error
+                       (message "Invalid roman numeral")))
+      (_ result))))
+
 
 (provide 'evil-numbers-roman)
 
